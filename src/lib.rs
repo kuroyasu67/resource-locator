@@ -5,6 +5,11 @@
 //!
 //! 受け付ける形式の詳細は、それぞれの型のドキュメントを参照。
 
+/// README.mdのコード例をdoctestとして実行する。
+#[cfg(doctest)]
+#[doc = include_str!("../README.md")]
+struct ReadmeDoctests;
+
 mod errors;
 mod file_location;
 mod scheme;
