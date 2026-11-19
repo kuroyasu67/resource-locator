@@ -106,6 +106,19 @@ impl fmt::Display for SecretLocation {
     }
 }
 
+/// `none://`、`sm://`または`env://`で始まる文字列を、[`FromStr`]と同じ規則で解析する。
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for SecretLocation {
+    fn deserialize<D: serde::Deserializer<'de>>(
+        deserializer: D,
+    ) -> std::result::Result<Self, D::Error> {
+        crate::de::deserialize_from_str(
+            deserializer,
+            "a secret location such as `none://`, `sm://...` or `env://...`",
+        )
+    }
+}
+
 /// Secret Managerのアイテム
 ///
 /// プロジェクト、シークレット名、バージョンは検証済みで、空になることはない。
@@ -623,6 +636,43 @@ mod secret_location_tests {
         let parsed: SecretLocation = location.parse().unwrap();
         assert_eq!(parsed.to_string(), expected);
         assert_eq!(expected.parse::<SecretLocation>(), Ok(parsed));
+    }
+
+    #[cfg(feature = "serde")]
+    #[rstest]
+    #[case::none("none://", Ok(SecretLocation::None))]
+    #[case::sm(
+        " sm://my-project/my-secret/3 ",
+        Ok(sm_in("my-project", "my-secret", "3"))
+    )]
+    #[case::env("env://API_KEY", Ok(env("API_KEY")))]
+    #[case::invalid("env://", Err("environment variable name is missing in `env://`"))]
+    fn deserialize_parses_string(
+        #[case] location: &str,
+        #[case] expected: std::result::Result<SecretLocation, &str>,
+    ) {
+        use serde::Deserialize;
+        use serde::de::IntoDeserializer;
+        use serde::de::value::{Error as ValueError, StrDeserializer};
+
+        let deserializer: StrDeserializer<'_, ValueError> = location.into_deserializer();
+        let actual = SecretLocation::deserialize(deserializer).map_err(|e| e.to_string());
+        assert_eq!(actual, expected.map_err(str::to_owned));
+    }
+
+    #[cfg(feature = "serde")]
+    #[test]
+    fn deserialize_rejects_non_string() {
+        use serde::Deserialize;
+        use serde::de::IntoDeserializer;
+        use serde::de::value::{BoolDeserializer, Error as ValueError};
+
+        let deserializer: BoolDeserializer<ValueError> = true.into_deserializer();
+        let err = SecretLocation::deserialize(deserializer).unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "invalid type: boolean `true`, expected a secret location such as `none://`, `sm://...` or `env://...`"
+        );
     }
 
     #[rstest]

@@ -137,6 +137,28 @@ assert_eq!(location.to_string(), "sm://my-project/db-password/latest");
 # Ok::<(), resource_locator::Error>(())
 ```
 
+## serdeによるデシリアライズ
+
+`serde`フィーチャーを有効にすると、`FileLocation`と`SecretLocation`が`serde::Deserialize`を実装します。
+文字列を`parse`と同じ規則で解析するため、設定ファイルの構造体のフィールドにそのまま使えます。
+
+```toml
+[dependencies]
+resource-locator = { git = "https://github.com/kuroyasu67/resource-locator", features = ["serde"] }
+```
+
+```rust,ignore
+use resource_locator::{FileLocation, SecretLocation};
+
+#[derive(serde::Deserialize)]
+struct Config {
+    template: FileLocation,
+    api_key: SecretLocation,
+}
+```
+
+解析に失敗した場合は、`Error`のメッセージがデシリアライザーのエラーとして返ります。
+
 ## 動作環境
 
 Rust 1.100.0以降

@@ -12,7 +12,14 @@ categories   = ["config", "parser-implementations"]
 include      = ["src/**/*.rs", "README.md", "LICENSE-*"]
 publish      = true
 
+[features]
+# `FileLocation`と`SecretLocation`に`serde::Deserialize`を実装する
+serde = ["dep:serde"]
+
 [dependencies]
+serde = { version = "1.0.229", default-features = false, features = [
+  "std",
+], optional = true }
 thiserror = "2.0.21"
 
 [dev-dependencies]
@@ -26,3 +33,6 @@ unused_qualifications = "warn"
 
 [lints.clippy]
 pedantic = { level = "warn", priority = -1 }
+
+[package.metadata.docs.rs]
+all-features = true

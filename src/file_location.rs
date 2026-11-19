@@ -79,6 +79,19 @@ impl fmt::Display for FileLocation {
     }
 }
 
+/// `gs://`または`local://`で始まる文字列を、[`FromStr`]と同じ規則で解析する。
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for FileLocation {
+    fn deserialize<D: serde::Deserializer<'de>>(
+        deserializer: D,
+    ) -> std::result::Result<Self, D::Error> {
+        crate::de::deserialize_from_str(
+            deserializer,
+            "a file location such as `gs://...` or `local://...`",
+        )
+    }
+}
+
 impl FileLocation {
     /// ローカルファイルの場合はそのパスを返す。
     #[must_use]
@@ -351,6 +364,44 @@ mod file_location_tests {
         let parsed: FileLocation = location.parse().unwrap();
         assert_eq!(parsed.to_string(), expected);
         assert_eq!(expected.parse::<FileLocation>(), Ok(parsed));
+    }
+
+    #[cfg(feature = "serde")]
+    #[rstest]
+    #[case::gs(" gs://my-bucket/config.toml ", Ok(gs("my-bucket", "config.toml")))]
+    #[case::local("local:///etc/app.toml", Ok(local("/etc/app.toml")))]
+    #[case::invalid(
+        "s3://my-bucket/config.toml",
+        Err(
+            "unsupported scheme `s3` in `s3://my-bucket/config.toml` (expected one of: `gs://`, `local://`)"
+        )
+    )]
+    fn deserialize_parses_string(
+        #[case] location: &str,
+        #[case] expected: std::result::Result<FileLocation, &str>,
+    ) {
+        use serde::Deserialize;
+        use serde::de::IntoDeserializer;
+        use serde::de::value::{Error as ValueError, StrDeserializer};
+
+        let deserializer: StrDeserializer<'_, ValueError> = location.into_deserializer();
+        let actual = FileLocation::deserialize(deserializer).map_err(|e| e.to_string());
+        assert_eq!(actual, expected.map_err(str::to_owned));
+    }
+
+    #[cfg(feature = "serde")]
+    #[test]
+    fn deserialize_rejects_non_string() {
+        use serde::Deserialize;
+        use serde::de::IntoDeserializer;
+        use serde::de::value::{Error as ValueError, U32Deserializer};
+
+        let deserializer: U32Deserializer<ValueError> = 42_u32.into_deserializer();
+        let err = FileLocation::deserialize(deserializer).unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "invalid type: integer `42`, expected a file location such as `gs://...` or `local://...`"
+        );
     }
 
     #[test]

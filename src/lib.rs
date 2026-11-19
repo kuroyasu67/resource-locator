@@ -10,6 +10,8 @@
 #[doc = include_str!("../README.md")]
 struct ReadmeDoctests;
 
+#[cfg(feature = "serde")]
+mod de;
 mod errors;
 mod file_location;
 mod scheme;
