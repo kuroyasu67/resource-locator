@@ -1,14 +1,15 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
-}
+//! リソースの位置を表す文字列を解析するクレート
+//!
+//! - ファイルの位置は[`FileLocation`]で表す(`gs://`、`local://`)。
+//! - シークレットの位置は[`SecretLocation`]で表す(`none://`、`sm://`、`env://`)。
+//!
+//! 受け付ける形式の詳細は、それぞれの型のドキュメントを参照。
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+mod errors;
+mod file_location;
+mod scheme;
+mod secret_location;
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
-}
+pub use errors::{Error, Result};
+pub use file_location::{CloudStorageItem, FileLocation};
+pub use secret_location::{EnvVarName, LATEST_VERSION, SecretLocation, SecretManagerItem};

@@ -9,3 +9,7 @@ publish      = true
 license      = "MIT OR Apache-2.0"
 
 [dependencies]
+thiserror = "2.0.21"
+
+[dev-dependencies]
+rstest = "0.28.0"
