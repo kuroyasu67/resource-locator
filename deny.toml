@@ -1,0 +1,17 @@
+# Configuration file for `cargo-deny`.
+# See https://embarkstudios.github.io/cargo-deny/ for more information.
+
+[licenses]
+# 依存クレートが実際に使用しているライセンスのみを許可する。
+allow = [
+  "Apache-2.0",
+  "BSD-3-Clause",
+  "CDLA-Permissive-2.0",
+  "ISC",
+  "MIT",
+  "Unicode-3.0",
+]
+confidence-threshold = 0.93
+
+[sources]
+unknown-git = "deny"
