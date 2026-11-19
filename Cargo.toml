@@ -1,15 +1,28 @@
 [package]
 name         = "resource-locator"
 version      = "0.1.0"
-rust-version = "1.100.0"
-keywords     = ["local", "google cloud"]
 edition      = "2024"
-exclude      = ["deny.toml", "prek.toml", "taplo.toml"]
-publish      = true
+rust-version = "1.100.0"
+description  = "Parse and validate resource location strings such as gs://, local://, sm:// and env://"
+readme       = "README.md"
+repository   = "https://github.com/kuroyasu67/resource-locator"
 license      = "MIT OR Apache-2.0"
+keywords     = ["gcp", "cloud-storage", "secret-manager", "config", "uri"]
+categories   = ["config", "parser-implementations"]
+include      = ["src/**/*.rs", "README.md", "LICENSE-*"]
+publish      = true
 
 [dependencies]
 thiserror = "2.0.21"
 
 [dev-dependencies]
 rstest = "0.28.0"
+
+[lints.rust]
+missing_docs          = "warn"
+unsafe_code           = "forbid"
+unreachable_pub       = "warn"
+unused_qualifications = "warn"
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
