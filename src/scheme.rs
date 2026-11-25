@@ -1,9 +1,14 @@
 //! `<scheme>://<rest>`形式の文字列の分解
 
+use std::path::PathBuf;
+
 use crate::errors::{Error, Result};
 
 /// スキームの区切り文字
 pub(crate) const SEPARATOR: &str = "://";
+
+/// ローカルファイルのスキーム
+pub(crate) const LOCAL_SCHEME: &str = "local";
 
 /// 前後の空白を除いたロケーション
 #[derive(Debug, Clone, Copy)]
@@ -49,5 +54,20 @@ impl Parts<'_> {
             scheme: self.scheme.to_owned(),
             expected,
         }
+    }
+
+    /// `local://`より後ろの文字列を、前後の空白を除いてローカルファイルのパスとして返す。
+    ///
+    /// # Errors
+    ///
+    /// パスが空、または空白のみの場合は[`Error::MissingLocalPath`]
+    pub(crate) fn local_path(&self) -> Result<PathBuf> {
+        let path = self.rest.trim();
+        if path.is_empty() {
+            return Err(Error::MissingLocalPath {
+                location: self.location.to_owned(),
+            });
+        }
+        Ok(PathBuf::from(path))
     }
 }

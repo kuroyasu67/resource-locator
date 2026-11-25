@@ -5,13 +5,10 @@ use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
 use crate::errors::{Error, Result};
-use crate::scheme::{self, Parts};
+use crate::scheme::{self, LOCAL_SCHEME, Parts};
 
 /// Cloud Storageのスキーム
 const CLOUD_STORAGE_SCHEME: &str = "gs";
-
-/// ローカルファイルのスキーム
-const LOCAL_SCHEME: &str = "local";
 
 /// [`FileLocation`]が受け付けるスキームの一覧(エラーメッセージ用)
 const EXPECTED_SCHEMES: &str = "`gs://`, `local://`";
@@ -56,15 +53,7 @@ impl FromStr for FileLocation {
         let parts = scheme::split(s)?;
         match parts.scheme {
             CLOUD_STORAGE_SCHEME => CloudStorageItem::from_parts(parts).map(Self::CloudStorage),
-            LOCAL_SCHEME => {
-                let path = parts.rest.trim();
-                if path.is_empty() {
-                    return Err(Error::MissingLocalPath {
-                        location: parts.location.to_owned(),
-                    });
-                }
-                Ok(Self::Local(PathBuf::from(path)))
-            }
+            LOCAL_SCHEME => parts.local_path().map(Self::Local),
             _ => Err(parts.unsupported(EXPECTED_SCHEMES)),
         }
     }

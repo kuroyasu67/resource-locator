@@ -1,10 +1,11 @@
 //! シークレットロケーション
 
 use std::fmt;
+use std::path::PathBuf;
 use std::str::FromStr;
 
 use crate::errors::{Error, Result};
-use crate::scheme::{self, Parts};
+use crate::scheme::{self, LOCAL_SCHEME, Parts};
 
 /// シークレットがないことを示すスキーム
 const NONE_SCHEME: &str = "none";
@@ -16,7 +17,7 @@ const SECRET_MANAGER_SCHEME: &str = "sm";
 const ENV_SCHEME: &str = "env";
 
 /// [`SecretLocation`]が受け付けるスキームの一覧(エラーメッセージ用)
-const EXPECTED_SCHEMES: &str = "`none://`, `sm://`, `env://`";
+const EXPECTED_SCHEMES: &str = "`none://`, `sm://`, `env://`, `local://`";
 
 /// バージョンを省略したときに使用するバージョン
 pub const LATEST_VERSION: &str = "latest";
@@ -40,6 +41,7 @@ const SECRET_PATH_FORMATS: &str = "expected `<secret>`, `<secret>/<version>`, \
 ///
 /// - `none://`: シークレットがない
 /// - `env://<variable-name>`: 環境変数
+/// - `local://<path>`: ローカルファイル
 /// - Secret Managerのシークレット(`<version>`を省略した場合は`latest`)
 ///   - `sm://<secret>`
 ///   - `sm://<secret>/<version>`
@@ -76,6 +78,9 @@ pub enum SecretLocation {
 
     /// 環境変数にシークレットを保持
     Env(EnvVarName),
+
+    /// ローカルファイルにシークレットを保持
+    Local(PathBuf),
 }
 
 impl FromStr for SecretLocation {
@@ -91,6 +96,7 @@ impl FromStr for SecretLocation {
             }),
             SECRET_MANAGER_SCHEME => SecretManagerItem::from_parts(parts).map(Self::SecretManager),
             ENV_SCHEME => EnvVarName::from_parts(parts).map(Self::Env),
+            LOCAL_SCHEME => parts.local_path().map(Self::Local),
             _ => Err(parts.unsupported(EXPECTED_SCHEMES)),
         }
     }
@@ -102,11 +108,12 @@ impl fmt::Display for SecretLocation {
             Self::None => write!(f, "{NONE_SCHEME}://"),
             Self::SecretManager(item) => item.fmt(f),
             Self::Env(name) => name.fmt(f),
+            Self::Local(path) => write!(f, "{LOCAL_SCHEME}://{}", path.display()),
         }
     }
 }
 
-/// `none://`、`sm://`または`env://`で始まる文字列を、[`FromStr`]と同じ規則で解析する。
+/// `none://`、`sm://`、`env://`または`local://`で始まる文字列を、[`FromStr`]と同じ規則で解析する。
 #[cfg(feature = "serde")]
 impl<'de> serde::Deserialize<'de> for SecretLocation {
     fn deserialize<D: serde::Deserializer<'de>>(
@@ -114,7 +121,7 @@ impl<'de> serde::Deserialize<'de> for SecretLocation {
     ) -> std::result::Result<Self, D::Error> {
         crate::de::deserialize_from_str(
             deserializer,
-            "a secret location such as `none://`, `sm://...` or `env://...`",
+            "a secret location such as `none://`, `sm://...`, `env://...` or `local://...`",
         )
     }
 }
@@ -369,6 +376,10 @@ mod secret_location_tests {
         SecretLocation::Env(EnvVarName(name.to_owned()))
     }
 
+    fn local(path: &str) -> SecretLocation {
+        SecretLocation::Local(PathBuf::from(path))
+    }
+
     #[rstest]
     #[case::none("none://", SecretLocation::None)]
     #[case::none_trims_location("  none://  ", SecretLocation::None)]
@@ -408,6 +419,9 @@ mod secret_location_tests {
     )]
     #[case::env("env://DATABASE_PASSWORD", env("DATABASE_PASSWORD"))]
     #[case::env_trims_name("env://  API_KEY  ", env("API_KEY"))]
+    #[case::local_relative("local://./secrets/api-key", local("./secrets/api-key"))]
+    #[case::local_absolute("local:///run/secrets/api-key", local("/run/secrets/api-key"))]
+    #[case::local_trims_path("local://  api-key.txt  ", local("api-key.txt"))]
     fn parse_returns_secret_location(#[case] location: &str, #[case] expected: SecretLocation) {
         assert_eq!(location.parse::<SecretLocation>(), Ok(expected));
     }
@@ -506,6 +520,8 @@ mod secret_location_tests {
     )]
     #[case::env_empty("env://", Error::MissingEnvVarName { location: "env://".into() })]
     #[case::env_blank("env://   ", Error::MissingEnvVarName { location: "env://".into() })]
+    #[case::local_empty("local://", Error::MissingLocalPath { location: "local://".into() })]
+    #[case::local_blank("local://   ", Error::MissingLocalPath { location: "local://".into() })]
     fn parse_rejects_invalid_location(#[case] location: &str, #[case] expected: Error) {
         assert_eq!(location.parse::<SecretLocation>(), Err(expected));
     }
@@ -632,6 +648,7 @@ mod secret_location_tests {
         "sm://my-project/my-secret/latest"
     )]
     #[case::env("env:// API_KEY ", "env://API_KEY")]
+    #[case::local("local:// /run/secrets/api-key ", "local:///run/secrets/api-key")]
     fn display_returns_normalized_location(#[case] location: &str, #[case] expected: &str) {
         let parsed: SecretLocation = location.parse().unwrap();
         assert_eq!(parsed.to_string(), expected);
@@ -646,6 +663,7 @@ mod secret_location_tests {
         Ok(sm_in("my-project", "my-secret", "3"))
     )]
     #[case::env("env://API_KEY", Ok(env("API_KEY")))]
+    #[case::local("local:///run/secrets/api-key", Ok(local("/run/secrets/api-key")))]
     #[case::invalid("env://", Err("environment variable name is missing in `env://`"))]
     fn deserialize_parses_string(
         #[case] location: &str,
@@ -671,7 +689,7 @@ mod secret_location_tests {
         let err = SecretLocation::deserialize(deserializer).unwrap_err();
         assert_eq!(
             err.to_string(),
-            "invalid type: boolean `true`, expected a secret location such as `none://`, `sm://...` or `env://...`"
+            "invalid type: boolean `true`, expected a secret location such as `none://`, `sm://...`, `env://...` or `local://...`"
         );
     }
 

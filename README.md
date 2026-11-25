@@ -3,7 +3,7 @@
 設定ファイルや環境変数に書いた「リソースの場所」を表す文字列を解析し、型付きの値に変換するRustクレートです。
 
 - ファイルの場所: Cloud Storageのオブジェクト、またはローカルファイル
-- シークレットの場所: Secret Managerのシークレット、環境変数、またはシークレットなし
+- シークレットの場所: Secret Managerのシークレット、環境変数、ローカルファイル、またはシークレットなし
 
 このクレートは文字列の解析と検証だけを行います。ファイルやシークレットの中身を実際に読み込む処理は含みません。
 
@@ -38,6 +38,7 @@ match &password {
         assert_eq!(item.version(), "3");
     }
     SecretLocation::Env(name) => println!("read ${}", name.as_str()),
+    SecretLocation::Local(path) => println!("read {}", path.display()),
     SecretLocation::None => println!("no secret"),
 }
 # Ok::<(), resource_locator::Error>(())
@@ -60,6 +61,7 @@ Cloud Storageのバケット名は全プロジェクトで一意なので、プ�
 | --- | --- |
 | `none://` | シークレットなし |
 | `env://<name>` | 環境変数 |
+| `local://<path>` | ローカルファイル(パスの書き方は`FileLocation`と同じ) |
 | `sm://<secret>` | Secret Manager(プロジェクトなし、バージョンは`latest`) |
 | `sm://<secret>/<version>` | Secret Manager(プロジェクトなし) |
 | `sm://<project>/<secret>/<version>` | Secret Manager(プロジェクトあり) |
@@ -120,7 +122,7 @@ assert_eq!(
 | `MissingEnvVarName` / `InvalidEnvVarName` | 環境変数名が空 / 規則に違反 |
 | `MissingBucket` / `InvalidBucketName` | バケット名が空 / 規則に違反 |
 | `MissingObjectPath` | オブジェクトパスが空 |
-| `MissingLocalPath` | ローカルパスが空 |
+| `MissingLocalPath` | ローカルパスが空(`FileLocation`、`SecretLocation`共通) |
 
 `Error`には`#[non_exhaustive]`が付いているため、`match`するときはワイルドカード(`_`)の腕が必要です。
 
