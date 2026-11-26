@@ -164,3 +164,54 @@ struct Config {
 ## 動作環境
 
 Rust 1.100.0以降
+
+## 依存関係の更新
+
+依存関係の更新には[Dependabot](https://docs.github.com/ja/code-security/dependabot)を使っています。
+設定は`.github/dependabot.yml`にあります。
+
+### 更新の対象とタイミング
+
+| 対象 | 内容 |
+| --- | --- |
+| `cargo` | `Cargo.toml`と`Cargo.lock`の依存クレート |
+| `github-actions` | `.github/workflows/`で使うAction |
+
+Dependabotは、日本時間の毎週月曜日0時に新しいバージョンを確認し、更新があればPRを作成します。
+脆弱性のある依存が見つかった場合は、週次の確認を待たずにセキュリティ更新のPRを作成します。
+
+PRは次の単位でまとめて作成されます。
+
+| 種類 | PRの単位 |
+| --- | --- |
+| クレートのminor・patch更新 | 1つのPRにまとめる |
+| クレートのmajor更新(0.x系では`0.28`から`0.29`のような更新を含む) | クレートごとに1つのPR |
+| Actionの更新 | 1つのPRにまとめる |
+| セキュリティ更新 | `cargo`と`github-actions`のそれぞれで1つのPRにまとめる |
+
+セキュリティ更新のPRを作成するには、リポジトリのSettings → Advanced Securityで次の設定を有効にする必要があります。
+
+- Dependency graph
+- Dependabot alerts
+- Dependabot security updates
+
+### PRへの対応
+
+Dependabotが作成したPRには、次の手順で対応します。
+
+1. CIのジョブがすべて成功していることを確認します。
+2. PRの説明にあるリリースノートや変更履歴で、互換性のない変更(Breaking、Changedなど)がないかを確認します。
+3. 互換性のない変更がある場合は、このリポジトリで使っている機能に影響するかを確認します。`dev-dependencies`のクレートは、このクレートの利用者には影響しません。
+4. 問題がなければマージします。
+5. マージ後、ローカルの`main`を最新にします。
+
+CIが失敗した場合や、互換性のない変更に合わせてコードの修正が必要な場合は、PRのブランチで修正してからマージします。
+修正せずに見送る場合は、PRにコメントで次のコマンドを書くと、Dependabotがその更新を作成しなくなります。
+
+| コマンド | 効果 |
+| --- | --- |
+| `@dependabot ignore this major version` | このmajorバージョンへの更新を無視する |
+| `@dependabot ignore this minor version` | このminorバージョンへの更新を無視する |
+| `@dependabot ignore this dependency` | この依存の更新をすべて無視する |
+
+PRがコンフリクトした場合は、`@dependabot rebase`とコメントするとDependabotがリベースします。
