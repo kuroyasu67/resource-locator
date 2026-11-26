@@ -5,15 +5,27 @@ on:
   push:
     branches: [main]
     paths:
+      # ソースコード
       - "src/**"
       - "tests/**"
       - "examples/**"
       - "benches/**"
-      # lib.rsで`include_str!`によりドキュメントへ取り込み、doctestの対象になる
-      - "README.md"
+      - "build.rs"
+      # 依存関係とビルド設定
+      - "Cargo.toml"
       - "Cargo.lock"
-      # Cargo.toml、deny.toml、taplo.toml、rustfmt.toml、clippy.tomlなど
-      - "**/*.toml"
+      - ".cargo/**"
+      - "rust-toolchain"
+      - "rust-toolchain.toml"
+      # 各ジョブのツールの設定
+      - "deny.toml"
+      - "taplo.toml"
+      - ".taplo.toml"
+      - "rustfmt.toml"
+      - ".rustfmt.toml"
+      - "clippy.toml"
+      - ".clippy.toml"
+      # このワークフロー自身
       - ".github/workflows/ci.yml"
   pull_request:
     paths:
@@ -21,9 +33,19 @@ on:
       - "tests/**"
       - "examples/**"
       - "benches/**"
-      - "README.md"
+      - "build.rs"
+      - "Cargo.toml"
       - "Cargo.lock"
-      - "**/*.toml"
+      - ".cargo/**"
+      - "rust-toolchain"
+      - "rust-toolchain.toml"
+      - "deny.toml"
+      - "taplo.toml"
+      - ".taplo.toml"
+      - "rustfmt.toml"
+      - ".rustfmt.toml"
+      - "clippy.toml"
+      - ".clippy.toml"
       - ".github/workflows/ci.yml"
   workflow_dispatch:
 
