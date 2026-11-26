@@ -102,6 +102,18 @@ impl FromStr for SecretLocation {
     }
 }
 
+/// 正規化した形式で出力する。
+///
+/// 出力した文字列を再び解析すると、元と同じ値になる。
+///
+/// ```
+/// use resource_locator::SecretLocation;
+///
+/// let location: SecretLocation = "sm://projects/my-project/secrets/db-password".parse()?;
+/// assert_eq!(location.to_string(), "sm://my-project/db-password/latest");
+/// assert_eq!(location.to_string().parse::<SecretLocation>()?, location);
+/// # Ok::<(), resource_locator::Error>(())
+/// ```
 impl fmt::Display for SecretLocation {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {

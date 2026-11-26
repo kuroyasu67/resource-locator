@@ -3,6 +3,20 @@
 /// エラー型
 ///
 /// どのバリアントも、原因を特定できるように解析対象の文字列全体を`location`に保持する。
+///
+/// ```
+/// use resource_locator::{Error, SecretLocation};
+///
+/// let err = "env://1API_KEY".parse::<SecretLocation>().unwrap_err();
+/// assert!(matches!(
+///     err,
+///     Error::InvalidEnvVarName { reason: "must not start with a digit", .. }
+/// ));
+/// assert_eq!(
+///     err.to_string(),
+///     "invalid environment variable name `1API_KEY` in `env://1API_KEY`: must not start with a digit",
+/// );
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[non_exhaustive]
 pub enum Error {

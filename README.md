@@ -16,33 +16,9 @@
 resource-locator = { git = "https://github.com/kuroyasu67/resource-locator" }
 ```
 
-文字列を`parse`すると、場所の種類に応じた値が得られます。
+文字列を`parse`すると、場所の種類に応じた値(`FileLocation`または`SecretLocation`)が得られます。
 
-```rust
-use resource_locator::{FileLocation, SecretLocation};
-
-let config: FileLocation = "gs://my-bucket/app/config.toml".parse()?;
-match &config {
-    FileLocation::CloudStorage(item) => {
-        assert_eq!(item.bucket(), "my-bucket");
-        assert_eq!(item.path(), "app/config.toml");
-    }
-    FileLocation::Local(path) => println!("read {}", path.display()),
-}
-
-let password: SecretLocation = "sm://my-project/db-password/3".parse()?;
-match &password {
-    SecretLocation::SecretManager(item) => {
-        assert_eq!(item.project(), Some("my-project"));
-        assert_eq!(item.secret(), "db-password");
-        assert_eq!(item.version(), "3");
-    }
-    SecretLocation::Env(name) => println!("read ${}", name.as_str()),
-    SecretLocation::Local(path) => println!("read {}", path.display()),
-    SecretLocation::None => println!("no secret"),
-}
-# Ok::<(), resource_locator::Error>(())
-```
+コード例はAPIドキュメントにあります。`cargo doc --open`で確認できます。
 
 ## 受け付ける形式
 
@@ -92,21 +68,6 @@ Cloud Storageのバケット名は全プロジェクトで一意なので、プ�
 ## エラー
 
 解析に失敗すると`resource_locator::Error`を返します。原因ごとにバリアントが分かれており、どのバリアントも入力全体を`location`に保持します。
-
-```rust
-use resource_locator::{Error, SecretLocation};
-
-let err = "env://1API_KEY".parse::<SecretLocation>().unwrap_err();
-assert!(matches!(
-    err,
-    Error::InvalidEnvVarName { reason: "must not start with a digit", .. }
-));
-assert_eq!(
-    err.to_string(),
-    "invalid environment variable name `1API_KEY` in `env://1API_KEY`: must not start with a digit",
-);
-```
-
 バリアントは次のとおりです。
 
 | バリアント | 原因 |
@@ -130,14 +91,7 @@ assert_eq!(
 
 どの型も`Display`を実装しており、正規化した形式で出力します。
 出力した文字列を再び解析すると、元と同じ値になります。
-
-```rust
-use resource_locator::SecretLocation;
-
-let location: SecretLocation = "sm://projects/my-project/secrets/db-password".parse()?;
-assert_eq!(location.to_string(), "sm://my-project/db-password/latest");
-# Ok::<(), resource_locator::Error>(())
-```
+たとえば`sm://projects/my-project/secrets/db-password`は`sm://my-project/db-password/latest`と出力します。
 
 ## serdeによるデシリアライズ
 
@@ -149,7 +103,7 @@ assert_eq!(location.to_string(), "sm://my-project/db-password/latest");
 resource-locator = { git = "https://github.com/kuroyasu67/resource-locator", features = ["serde"] }
 ```
 
-```rust,ignore
+```rust
 use resource_locator::{FileLocation, SecretLocation};
 
 #[derive(serde::Deserialize)]
