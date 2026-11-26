@@ -16,6 +16,11 @@ updates:
         update-types:
           - "minor"
           - "patch"
+      # セキュリティ更新を1つのPRにまとめる
+      cargo-security:
+        applies-to: security-updates
+        patterns:
+          - "*"
 
   - package-ecosystem: "github-actions"
     directory: "/"
@@ -29,5 +34,10 @@ updates:
       include: "scope"
     groups:
       github-actions:
+        patterns:
+          - "*"
+      # セキュリティ更新を1つのPRにまとめる
+      github-actions-security:
+        applies-to: security-updates
         patterns:
           - "*"
