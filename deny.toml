@@ -1,17 +1,31 @@
 # Configuration file for `cargo-deny`.
 # See https://embarkstudios.github.io/cargo-deny/ for more information.
 
+[advisories]
+version = 2
+yanked  = "deny"
+# 例外とする勧告。理由と、例外を外す条件を記述し、条件を満たしたら削除する。
+ignore = []
+
 [licenses]
+version = 2
 # 依存クレートが実際に使用しているライセンスのみを許可する。
-allow = [
-  "Apache-2.0",
-  "BSD-3-Clause",
-  "CDLA-Permissive-2.0",
-  "ISC",
-  "MIT",
-  "Unicode-3.0",
-]
+allow                = ["Apache-2.0", "MIT", "Unicode-3.0"]
 confidence-threshold = 0.93
 
+[licenses.private]
+# 公開しない（publish = false）クレートはライセンス検査の対象外とする。
+ignore = true
+
+[bans]
+multiple-versions = "warn"
+wildcards         = "deny"
+# 版を記述しないパスの依存は許可する。
+allow-wildcard-paths = true
+
 [sources]
-unknown-git = "deny"
+allow-registry   = ["https://github.com/rust-lang/crates.io-index"]
+unknown-git      = "deny"
+unknown-registry = "deny"
+# Gitのリポジトリから取得する依存は使わない。
+allow-git = []

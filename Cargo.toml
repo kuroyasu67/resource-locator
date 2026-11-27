@@ -1,29 +1,30 @@
 [package]
-name         = "resource-locator"
-version      = "0.1.0"
-edition      = "2024"
-rust-version = "1.100.0"
+name    = "resource-locator"
+version = "0.1.0"
+edition = "2024"
+# 利用者がビルドできる最小のRustの版（MSRV）。エディション2024を使える最も古い版である。
+# 開発とCIで使う版は、rust-toolchain.tomlで固定する。CIのmsrvジョブが、この版でライブラリーをビルドできることを確認する。
+rust-version = "1.85"
 description  = "Parse and validate resource location strings such as gs://, local://, sm:// and env://"
 readme       = "README.md"
 repository   = "https://github.com/kuroyasu67/resource-locator"
 license      = "MIT OR Apache-2.0"
 keywords     = ["gcp", "cloud-storage", "secret-manager", "config", "uri"]
 categories   = ["config", "parser-implementations"]
-include      = ["src/**/*.rs", "README.md", "LICENSE-*"]
-publish      = true
+# crates.ioには公開せず、利用者はGitのリポジトリから取り込むため、誤って公開しないようにする。
+publish = false
 
 [features]
 # `FileLocation`と`SecretLocation`に`serde::Deserialize`を実装する
 serde = ["dep:serde"]
 
 [dependencies]
-serde = { version = "1.0.229", default-features = false, features = [
-  "std",
-], optional = true }
-thiserror = "2.0.21"
+# serdeのフィーチャーを有効にした場合のみ使う。Deserializeは手で実装するため、deriveは有効にしない。
+serde     = { version = "1", optional = true }
+thiserror = "2"
 
 [dev-dependencies]
-rstest = "0.29.0"
+rstest = "0.29"
 
 [lints.rust]
 missing_docs          = "warn"
@@ -32,7 +33,9 @@ unreachable_pub       = "warn"
 unused_qualifications = "warn"
 
 [lints.clippy]
-pedantic = { level = "warn", priority = -1 }
-
-[package.metadata.docs.rs]
-all-features = true
+all           = { level = "warn", priority = -1 }
+pedantic      = { level = "warn", priority = -1 }
+dbg_macro     = "warn"
+todo          = "warn"
+unimplemented = "warn"
+unwrap_used   = "warn"

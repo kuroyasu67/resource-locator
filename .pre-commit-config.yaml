@@ -1,0 +1,96 @@
+# Gitのフックの定義。prekで実行する（`prek install`で導入する）。
+# 速い検査はコミット時に、時間のかかる検査はプッシュ時に実行する。
+# pre-commitと互換性を保つため、prekに固有のprek.tomlではなく、このファイルに記述する。
+default_install_hook_types: [pre-commit, pre-push]
+default_stages: [pre-commit]
+# 最初に失敗したフックで、残りを実行しない。
+fail_fast: true
+exclude: ^target/
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-yaml
+      - id: check-json
+      - id: check-toml
+      # マージによるコンフリクトを解消していないコミットを防止する。
+      - id: check-merge-conflict
+      # 大文字小文字を区別しないファイルシステムで衝突する名前を検出する。
+      - id: check-case-conflict
+      # サイズの大きいファイルを確認する。
+      - id: check-added-large-files
+      # ファイル先頭のUTF-8 BOMを除去する。
+      - id: fix-byte-order-marker
+      # 異なる改行コードを検出し、LFに変換する。
+      - id: mixed-line-ending
+        args: [--fix=lf]
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: detect-private-key
+
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1
+    hooks:
+      - id: gitleaks
+
+  - repo: https://github.com/DavidAnson/markdownlint-cli2
+    rev: v0.24.2
+    hooks:
+      - id: markdownlint-cli2
+
+  - repo: local
+    hooks:
+      # CIの複数のジョブに記述したツールの版が、揃っていることを確認する。
+      - id: check-ci-tool-versions
+        name: check CI tool versions
+        entry: scripts/check-ci-tool-versions.sh
+        language: script
+        files: ^(\.github/workflows/ci\.yml|scripts/check-ci-tool-versions\.sh)$
+        pass_filenames: false
+
+      - id: cargo-fmt
+        name: cargo fmt
+        entry: cargo fmt --all -- --check
+        language: system
+        types: [rust]
+        pass_filenames: false
+
+      - id: taplo-fmt
+        name: taplo fmt
+        entry: taplo fmt --check
+        language: system
+        types: [toml]
+
+      # Cargo.tomlを変更して、Cargo.lockを更新し忘れたコミットを防ぐ。
+      # cargo metadataは標準出力にJSONを出力するが、終了コードのみで判定する。
+      - id: cargo-lock
+        name: check Cargo.lock
+        entry: cargo metadata --locked --format-version 1 --quiet
+        language: system
+        files: ^(.*/)?Cargo\.(toml|lock)$
+        pass_filenames: false
+
+      # 依存クレートの構成が変わったときにのみ検査し、コミットを遅くしない。
+      - id: cargo-deny
+        name: cargo deny check
+        entry: cargo deny --locked check
+        language: system
+        files: ^(Cargo\.(toml|lock)|deny\.toml)$
+        pass_filenames: false
+
+      - id: cargo-clippy
+        name: cargo clippy
+        entry: cargo clippy --all-targets --all-features -- -D warnings
+        language: system
+        types: [rust]
+        pass_filenames: false
+        stages: [pre-push]
+
+      - id: cargo-nextest
+        name: cargo nextest
+        entry: cargo nextest run --all-features
+        language: system
+        types: [rust]
+        pass_filenames: false
+        stages: [pre-push]
