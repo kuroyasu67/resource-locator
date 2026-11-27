@@ -1,3 +1,6 @@
+# TOMLのファイルの書式の設定。Gitのフックで`taplo fmt --check`により検査し、`taplo fmt`で整形する。
+exclude = ["target/**"]
+
 [formatting]
 align_entries = true
 # reorder_keys = true

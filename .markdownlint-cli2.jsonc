@@ -1,0 +1,9 @@
+// markdownlint（VS Code拡張機能およびmarkdownlint-cli2）の設定
+{
+  "config": {
+    // 日本語の文は1行が長くなるため、行の長さを検査しない
+    "MD013": false
+  },
+  // ライセンスファイルは、ライセンスの原文をそのまま記載する必要があり、Markdownの規則に合わせて書き換えられないため、検査しない
+  "ignores": ["LICENSE-APACHE", "LICENSE-MIT"]
+}

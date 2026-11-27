@@ -1,137 +1,282 @@
+# Gitのフックと同じ検査、最小のRustの版でのビルドの検査および依存クレートの検査を実行する。
+# フックは手元で省略できるため、CIを最終の関門とする。
+# 方針は、docs/development-tools.mdの「CI」に記述する。
 name: CI
 
-# ビルド・テスト・リントの結果に影響するファイルを変更したときだけ実行する
+# mainブランチへの変更は、Pull Requestを経由し、そのPull RequestでCIを実行する。
+# マージした後のブランチでは、同じ検査を繰り返さない。
 on:
+  pull_request:
+    branches: [main]
+  # Rustのビルドのキャッシュは、Pull Requestの間で共有されず、デフォルトブランチ（main）のキャッシュのみを共有する。
+  # 依存関係を変更した場合に限り、mainでcacheジョブのみを実行して、Pull Requestが使うキャッシュを作り直す。
   push:
     branches: [main]
     paths:
-      # ソースコード
-      - "src/**"
-      - "tests/**"
-      - "examples/**"
-      - "benches/**"
-      - "build.rs"
-      # 依存関係とビルド設定
-      - "Cargo.toml"
-      - "Cargo.lock"
-      - ".cargo/**"
-      - "rust-toolchain"
-      - "rust-toolchain.toml"
-      # 各ジョブのツールの設定
-      - "deny.toml"
-      - "taplo.toml"
-      - ".taplo.toml"
-      - "rustfmt.toml"
-      - ".rustfmt.toml"
-      - "clippy.toml"
-      - ".clippy.toml"
-      # このワークフロー自身
-      - ".github/workflows/ci.yml"
-  pull_request:
-    paths:
-      - "src/**"
-      - "tests/**"
-      - "examples/**"
-      - "benches/**"
-      - "build.rs"
-      - "Cargo.toml"
-      - "Cargo.lock"
-      - ".cargo/**"
-      - "rust-toolchain"
-      - "rust-toolchain.toml"
-      - "deny.toml"
-      - "taplo.toml"
-      - ".taplo.toml"
-      - "rustfmt.toml"
-      - ".rustfmt.toml"
-      - "clippy.toml"
-      - ".clippy.toml"
-      - ".github/workflows/ci.yml"
-  workflow_dispatch:
+      - Cargo.lock
+      - rust-toolchain.toml
 
-permissions:
-  contents: read
-
-# 同じブランチやPRで新しい実行が始まったら、古い実行をキャンセル
+# 同じブランチまたはPull Requestで新しい実行が始まったら、古い実行を取り消す。
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 env:
   CARGO_TERM_COLOR: always
-  RUSTFLAGS: -D warnings
 
 jobs:
-  fmt:
-    name: rustfmt
-    runs-on: ubuntu-latest
+  # プログラムの振る舞いに影響しないファイルのみを変更したPull Requestでは、検査のジョブを省略する。
+  # paths-ignoreやpathsでワークフローごと省略すると、ステータスチェック（CI result）が報告されないためである。
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      code: ${{ steps.detect.outputs.code }}
     steps:
-      - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          components: rustfmt
-      - run: cargo fmt --all -- --check
+          persist-credentials: false
+          # Pull Requestでは、ベースブランチとのマージコミットを取得する。その1つ目の親が、ベースブランチである。
+          fetch-depth: 2
+      - id: detect
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          # Pull Request以外（mainブランチへのpush）では、検査のジョブを実行しない。
+          if [ "$EVENT_NAME" != pull_request ]; then
+            echo "code=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          code=$(git diff --name-only HEAD^1 HEAD \
+            | grep -v -E '(\.md$|^\.editorconfig$|^\.markdownlint-cli2\.(yaml|jsonc)$|^\.github/dependabot\.yml$|^LICENSE-)' \
+            | head -n 1)
+          echo "code=$([ -n "$code" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
+  # 認証情報は、ドキュメントや設定ファイルにも書かれることがあるため、変更したファイルの判定にかかわらず、すべてのPull Requestで実行する。
+  secrets:
+    name: Secrets
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # .pre-commit-config.yamlのgitleaksのフックを実行し、フックと同じ版のgitleaksを使う。
+      - uses: j178/prek-action@7b101f8338a08d2bd6fdb3625e4e7692428763a3 # v3.1.1
+        with:
+          # Dependabotは、Actionsの入力に記述した版を更新しないため、手動で更新する。
+          prek-version: 0.5.11
+          extra-args: gitleaks --all-files
+
+  hooks:
+    name: Commit hooks
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      # シークレット検出は、secretsジョブで実行する。
+      # cargo denyは、pre-commitフックに加えているが、denyジョブで実行する。
+      SKIP: gitleaks,cargo-deny
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # cargo fmtとcargo metadataのフックが、rust-toolchain.tomlのツールチェーンを使う。
+      - run: rustup toolchain install
+      # taplo fmtのフック（language: system）が使う。
+      - uses: taiki-e/install-action@fe3acb53a98b62c772db35de75ce0e4595e7ca8c # v2.90.8
+        with:
+          tool: taplo@0.10.0
+      - uses: j178/prek-action@7b101f8338a08d2bd6fdb3625e4e7692428763a3 # v3.1.1
+        with:
+          # Dependabotは、Actionsの入力に記述した版を更新しないため、手動で更新する。
+          prek-version: 0.5.11
+          # prek-actionは、--show-diff-on-failureを自ら付けるため、重ねて指定しない。
+          extra-args: --all-files
 
   clippy:
-    name: clippy
-    runs-on: ubuntu-latest
+    name: Clippy
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          components: clippy
-      - uses: Swatinem/rust-cache@v2
-      - run: cargo clippy --locked --all-targets --all-features -- -D warnings
+          persist-credentials: false
+      - run: rustup toolchain install
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          shared-key: build
+          # mainブランチへのpush（cacheジョブ）でのみ、キャッシュを保存する。
+          save-if: ${{ github.event_name == 'push' }}
+      - run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
 
-  test:
-    name: test (${{ matrix.toolchain }}, ${{ matrix.features }})
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        # stableとCargo.tomlのrust-version（MSRV）で検証
-        toolchain: [stable, "1.100.0"]
-        features: [default, all-features]
+  # ドキュメントの誤り（例: 存在しない項目へのリンク）を検出するため、警告をエラーとしてcargo docを実行する。
+  docs:
+    name: Docs
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@master
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          toolchain: ${{ matrix.toolchain }}
-      - uses: Swatinem/rust-cache@v2
-      - name: cargo test
+          persist-credentials: false
+      - run: rustup toolchain install
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          shared-key: build
+          save-if: ${{ github.event_name == 'push' }}
+      # RUSTDOCFLAGSは、cargo docのみが使い、他のジョブのビルドのキャッシュに影響しない。
+      - run: cargo doc --workspace --no-deps --all-features --locked
+        env:
+          RUSTDOCFLAGS: -D warnings
+
+  unit-tests:
+    name: Unit tests
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: rustup toolchain install
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          shared-key: build
+          save-if: ${{ github.event_name == 'push' }}
+      - uses: taiki-e/install-action@fe3acb53a98b62c772db35de75ce0e4595e7ca8c # v2.90.8
+        with:
+          tool: cargo-nextest@0.9.152
+      - run: cargo nextest run --workspace --all-features --locked
+      # cargo-nextestはドキュメントテストを実行しないため、別に実行する。
+      - run: cargo test --workspace --doc --all-features --locked
+      # serdeのフィーチャーを有効にしない、既定のフィーチャーでも、テストが通ることを確認する。
+      - run: cargo nextest run --workspace --locked
+      - run: cargo test --workspace --doc --locked
+
+  msrv:
+    name: MSRV
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # cargo metadataを実行するため、rust-toolchain.tomlのツールチェーンも導入する。
+      - run: rustup toolchain install
+      # Cargo.tomlのrust-versionを読み取り、その版のツールチェーンを導入する。
+      - name: Install the MSRV toolchain
         run: |
-          if [ "${{ matrix.features }}" = "all-features" ]; then
-            cargo test --locked --all-targets --all-features
-            cargo test --locked --doc --all-features
-          else
-            cargo test --locked --all-targets
-            cargo test --locked --doc
-          fi
-
-  doc:
-    name: rustdoc
-    runs-on: ubuntu-latest
-    env:
-      RUSTDOCFLAGS: -D warnings
-    steps:
-      - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-      - run: cargo doc --locked --no-deps --all-features
+          msrv=$(cargo metadata --no-deps --format-version 1 --locked \
+            | jq -r '[.packages[].rust_version] | map(select(. != null)) | first')
+          test -n "${msrv}" && test "${msrv}" != null
+          rustup toolchain install "${msrv}" --profile minimal
+          echo "MSRV=${msrv}" >> "${GITHUB_ENV}"
+      # 他のジョブと異なるツールチェーンを使うため、キャッシュのキーを分ける。
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          shared-key: msrv
+          save-if: ${{ github.event_name == 'push' }}
+      # ライブラリーの利用者は、rust-versionの版でビルドする。テストとサンプルの依存は利用者に影響しないため、ライブラリーのみを検査する。
+      - run: cargo "+${MSRV}" check --workspace --lib --all-features --locked
+      # serdeのフィーチャーを有効にしない、既定のフィーチャーでも、ビルドできることを確認する。
+      - run: cargo "+${MSRV}" check --workspace --lib --locked
 
   deny:
-    name: cargo-deny
-    runs-on: ubuntu-latest
+    name: cargo deny
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v7
-      - uses: EmbarkStudios/cargo-deny-action@v2
-
-  taplo:
-    name: taplo
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: taiki-e/install-action@v2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          tool: taplo-cli
-      - run: taplo fmt --check
+          persist-credentials: false
+      # cargo-denyは、cargo metadataで依存クレートを解決するため、ツールチェーンを使う。
+      - run: rustup toolchain install
+      - uses: taiki-e/install-action@fe3acb53a98b62c772db35de75ce0e4595e7ca8c # v2.90.8
+        with:
+          tool: cargo-deny@0.22.0
+      # Dependabotが`Cargo.lock`を更新しない間に公開された勧告も、CIで検出する。
+      - run: cargo deny --locked check
+
+  machete:
+    name: cargo machete
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # cargo-macheteは、ビルドせずにソースコードを検索するため、ツールチェーンとキャッシュを必要としない。
+      - uses: taiki-e/install-action@fe3acb53a98b62c772db35de75ce0e4595e7ca8c # v2.90.8
+        with:
+          tool: cargo-machete@0.10.1
+      - run: cargo machete
+
+  # 依存関係を取得してビルドするだけで、Pull Requestの検査のジョブが使うキャッシュを作り直す。検査はしない。
+  cache:
+    name: Cache
+    # mainブランチへのpushでのみ実行する。
+    if: github.event_name == 'push'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: rustup toolchain install
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          shared-key: build
+          save-if: ${{ github.event_name == 'push' }}
+      # clippyジョブが使う、依存クレートのメタデータを作る。
+      - run: cargo check --workspace --all-targets --all-features --locked
+      # unit-testsジョブが使う、依存クレートのビルドの結果を作る。
+      - run: cargo build --workspace --all-targets --all-features --locked
+
+  # すべてのジョブの結果を1つに集約したステータスチェック。
+  # 取り消された実行では報告せず、新しい実行の結果を待つ。
+  result:
+    name: CI result
+    # すべてのジョブを列挙する。列挙し忘れたジョブは、失敗しても結果に反映されない。
+    needs:
+      - changes
+      - secrets
+      - hooks
+      - clippy
+      - docs
+      - unit-tests
+      - msrv
+      - deny
+      - machete
+      - cache
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      # 変更の検出は成功し、その他のジョブは、成功したか、変更がないため省略されたことを確認する。
+      - name: Check the results of the jobs
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          echo "$NEEDS" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
+          echo "$NEEDS" | jq -e '
+            .changes.result == "success"
+            and ([to_entries[] | select(.key != "changes") | .value.result]
+                 | all(. == "success" or . == "skipped"))
+          ' > /dev/null

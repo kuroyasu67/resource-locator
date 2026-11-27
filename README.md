@@ -117,7 +117,11 @@ struct Config {
 
 ## 動作環境
 
-Rust 1.100.0以降
+Rust 1.85以降（`Cargo.toml`の`rust-version`）
+
+## 開発
+
+Rustの版、リンター、Gitのフック、テスト、CI、依存関係の自動更新およびクレートの版の指定の方針は、[開発ツール](docs/development-tools.md)に記述しています。
 
 ## 依存関係の更新
 
@@ -128,11 +132,14 @@ Rust 1.100.0以降
 
 | 対象 | 内容 |
 | --- | --- |
-| `cargo` | `Cargo.toml`と`Cargo.lock`の依存クレート |
+| `cargo` | `Cargo.toml`と`Cargo.lock`の依存クレート。間接的な依存も更新する |
 | `github-actions` | `.github/workflows/`で使うAction |
+| `rust-toolchain` | `rust-toolchain.toml`のRustの版。`Cargo.toml`の`rust-version`（MSRV）は更新しない |
+| `pre-commit` | `.pre-commit-config.yaml`のGitのフックの版 |
 
 Dependabotは、日本時間の毎週月曜日0時に新しいバージョンを確認し、更新があればPRを作成します。
 脆弱性のある依存が見つかった場合は、週次の確認を待たずにセキュリティ更新のPRを作成します。
+公開の直後に取り下げられた版や、乗っ取られて公開された版を取り込まないよう、バージョン更新では、公開から3日を経過していない版を取り込みません（セキュリティ更新には適用されません）。
 
 PRは次の単位でまとめて作成されます。
 

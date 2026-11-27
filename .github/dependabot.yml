@@ -1,3 +1,5 @@
+# Dependabotは、依存関係の更新のPull Requestを自動で作成する。
+# 方針は、docs/development-tools.mdの「依存関係の自動更新」に記述する。
 version: 2
 updates:
   - package-ecosystem: "cargo"
@@ -7,12 +9,20 @@ updates:
       day: "monday"
       time: "00:00"
       timezone: "Asia/Tokyo"
+    # 公開の直後に取り下げられた版や、乗っ取られて公開された版を取り込まないよう、公開から3日を待つ。
+    cooldown:
+      default-days: 3
+    # 依存クレートの脆弱性は、間接的な依存で報告されることが多いため、間接的な依存もCargo.lockで更新する。
+    allow:
+      - dependency-type: all
     open-pull-requests-limit: 10
     commit-message:
       prefix: "chore"
       include: "scope"
     groups:
       cargo-minor-and-patch:
+        patterns:
+          - "*"
         update-types:
           - "minor"
           - "patch"
@@ -29,6 +39,8 @@ updates:
       day: "monday"
       time: "00:00"
       timezone: "Asia/Tokyo"
+    cooldown:
+      default-days: 3
     commit-message:
       prefix: "chore"
       include: "scope"
@@ -41,3 +53,31 @@ updates:
         applies-to: security-updates
         patterns:
           - "*"
+
+  # rust-toolchain.tomlのRustの版を更新する。Cargo.tomlのrust-version（MSRV）は更新しない。
+  - package-ecosystem: "rust-toolchain"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "00:00"
+      timezone: "Asia/Tokyo"
+    cooldown:
+      default-days: 3
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+
+  # .pre-commit-config.yamlのフックの版を更新する。
+  - package-ecosystem: "pre-commit"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "00:00"
+      timezone: "Asia/Tokyo"
+    cooldown:
+      default-days: 3
+    commit-message:
+      prefix: "chore"
+      include: "scope"

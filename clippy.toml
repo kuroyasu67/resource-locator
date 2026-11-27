@@ -1,0 +1,3 @@
+# テストでは、unwrap()で失敗をパニックにすることが妥当であるため、clippy::unwrap_usedの対象から外す。
+# ライブラリーでは、msrvを記述しない。ClippyはCargo.tomlのrust-versionを読み、MSRVで使えない機能を提案しない。
+allow-unwrap-in-tests = true
