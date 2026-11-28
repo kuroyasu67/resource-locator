@@ -40,19 +40,19 @@ repos:
     hooks:
       - id: markdownlint-cli2
 
-  # GitHub Actionsのワークフローの誤りを検出する。Goを導入せずに済むよう、Dockerのイメージで実行する。
+  # GitHub Actionsのワークフローに含まれる誤りを検出する。Goを導入せずに済むよう、Dockerのイメージで実行する。
   - repo: https://github.com/rhysd/actionlint
     rev: v1.7.12
     hooks:
       - id: actionlint-docker
 
-  # GitHub Actionsのワークフローの、安全でない記述を検出する。GitHubのトークンを渡さず、オフラインで実行する。
+  # GitHub Actionsのワークフローに含まれる、安全でない記述を検出する。GitHubのトークンを渡さず、オフラインで実行する。
   - repo: https://github.com/zizmorcore/zizmor-pre-commit
     rev: v1.33.1
     hooks:
       - id: zizmor
 
-  # コード、コメントおよびドキュメントの英単語の綴りの誤りを検出する。
+  # コード、コメントおよびドキュメントに含まれる英単語の綴り誤りを検出する。
   - repo: https://github.com/crate-ci/typos
     rev: v1.52.2
     hooks:

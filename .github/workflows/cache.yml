@@ -1,9 +1,10 @@
-# mainブランチで、Pull Requestの検査のジョブが使うビルドのキャッシュを作り直す。検査はしない。
+# mainブランチで、Pull Requestを検査するジョブが使う、ビルドのキャッシュを作り直す。このワークフローは、検査をしない。
 # 方針は、docs/development-tools.mdの「CI」に記述する。
-# ci.ymlに含めると、mainブランチへのpushでもCI resultが報告され、検査していないマージコミットに成功のCI resultが付くため、分ける。
+# この処理をci.ymlに含めると、mainブランチへのpushでもCI resultが報告され、検査していないマージコミットに成功のCI resultが付く。
+# したがって、この処理は、ci.ymlとは別のワークフローに分ける。
 name: cache
 
-# Swatinem/rust-cacheのキャッシュのキーに含まれるファイルを変更したPull Requestを、mainブランチにマージしたときのみ実行する。
+# Swatinem/rust-cacheがキャッシュのキーに含めるファイルを変更したPull Requestを、mainブランチにマージしたときのみ実行する。
 on:
   push:
     branches: [main]
@@ -26,7 +27,7 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  # 依存関係を取得してビルドするだけで、Pull Requestの検査のジョブが使うキャッシュを作り直す。検査はしない。
+  # cacheジョブは、依存関係を取得してビルドし、Pull Requestを検査するジョブが使うキャッシュを作り直す。cacheジョブは、検査をしない。
   cache:
     name: Cache
     runs-on: ubuntu-24.04
@@ -42,5 +43,5 @@ jobs:
           save-if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
       # clippyジョブが使う、依存クレートのメタデータを作る。
       - run: cargo check --workspace --all-targets --all-features --locked
-      # unit-testsジョブが使う、依存クレートのビルドの結果を作る。
+      # unit-testsジョブが使う、依存クレートをビルドした結果を作る。
       - run: cargo build --workspace --all-targets --all-features --locked

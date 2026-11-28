@@ -54,7 +54,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      # .pre-commit-config.yamlのgitleaks-dockerのフックを実行し、フックと同じ版のgitleaksを、Dockerのイメージで使う。
+      # .pre-commit-config.yamlに定義したgitleaks-dockerのフックを実行し、フックと同じ版のgitleaksを、Dockerのイメージで使う。
       - uses: j178/prek-action@7b101f8338a08d2bd6fdb3625e4e7692428763a3 # v3.1.1
         with:
           # Dependabotは、Actionsの入力に記述した版を更新しないため、手動で更新する。
@@ -103,7 +103,7 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           shared-key: build
-          # mainブランチへのpush（cache.ymlのcacheジョブ）でのみ、キャッシュを保存する。
+          # mainブランチへのpush（cache.ymlに定義したcacheジョブ）でのみ、キャッシュを保存する。
           save-if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
       - run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
 
@@ -154,7 +154,7 @@ jobs:
       - run: cargo test --workspace --doc --locked
 
   # 他のジョブは--all-featuresでビルドするため、一部のフィーチャーのみを有効にした場合のビルドの失敗を見逃す。
-  # フィーチャーのすべての組み合わせ（既定のフィーチャーを無効にした場合を含む）で、ライブラリーをビルドできることを確認する。
+  # したがって、featuresジョブは、フィーチャーのすべての組み合わせ（既定のフィーチャーを無効にした場合を含む）で、ライブラリーをビルドできることを確認する。
   features:
     name: Features
     needs: changes
@@ -166,12 +166,12 @@ jobs:
         with:
           persist-credentials: false
       - run: rustup toolchain install
-      # 組み合わせごとにビルドの結果が異なり、cacheジョブで作ったキャッシュを使えず、featuresジョブのためのキャッシュも作られないため、
-      # Swatinem/rust-cacheを使わない。
+      # featuresジョブは、フィーチャーの組み合わせごとにビルドの結果が異なるため、cacheジョブで作ったキャッシュを使えず、featuresジョブのためのキャッシュも作られない。
+      # したがって、featuresジョブでは、Swatinem/rust-cacheを使わない。
       - uses: taiki-e/install-action@073e1fd0bc889c9aee68dbaaa927cde1b5653a83 # v2.90.11
         with:
           tool: cargo-hack@0.6.46
-      # --no-dev-depsは、実行中にCargo.tomlを書き換えるため使わない。--libを指定すれば、テストのみで使う依存クレートはビルドされない。
+      # cargo-hackの--no-dev-depsは、実行中にCargo.tomlを書き換えるため、使わない。--libを指定すれば、テストのみで使う依存クレートはビルドされない。
       - run: cargo hack check --workspace --feature-powerset --lib --locked
 
   msrv:
@@ -194,8 +194,8 @@ jobs:
           test -n "${msrv}" && test "${msrv}" != null
           rustup toolchain install "${msrv}" --profile minimal
           echo "MSRV=${msrv}" >> "${GITHUB_ENV}"
-      # 他のジョブと異なるツールチェーンを使い、cacheジョブで作ったキャッシュを使えず、msrvジョブのためのキャッシュも作られないため、
-      # Swatinem/rust-cacheを使わない。
+      # msrvジョブは、他のジョブと異なるツールチェーンを使うため、cacheジョブで作ったキャッシュを使えず、msrvジョブのためのキャッシュも作られない。
+      # したがって、msrvジョブでは、Swatinem/rust-cacheを使わない。
       # ライブラリーの利用者は、rust-versionの版でビルドする。テストとサンプルの依存は利用者に影響しないため、ライブラリーのみを検査する。
       - run: cargo "+${MSRV}" check --workspace --lib --all-features --locked
       # serdeのフィーチャーを有効にしない、既定のフィーチャーでも、ビルドできることを確認する。
