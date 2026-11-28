@@ -5,16 +5,11 @@ name: CI
 
 # mainブランチへの変更は、Pull Requestを経由し、そのPull RequestでCIを実行する。
 # マージした後のブランチでは、同じ検査を繰り返さない。
+# mainブランチへのpushでは起動しない。pushで起動すると、検査していないマージコミットにCI resultが付くためである。
+# mainブランチでビルドのキャッシュを作り直す処理は、別のワークフロー（cache.yml）で実行する。
 on:
   pull_request:
     branches: [main]
-  # Rustのビルドのキャッシュは、Pull Requestの間で共有されず、デフォルトブランチ（main）のキャッシュのみを共有する。
-  # 依存関係を変更した場合に限り、mainでcacheジョブのみを実行して、Pull Requestが使うキャッシュを作り直す。
-  push:
-    branches: [main]
-    paths:
-      - Cargo.lock
-      - rust-toolchain.toml
 
 # 同じブランチまたはPull Requestで新しい実行が始まったら、古い実行を取り消す。
 concurrency:
@@ -43,35 +38,28 @@ jobs:
           # Pull Requestでは、ベースブランチとのマージコミットを取得する。その1つ目の親が、ベースブランチである。
           fetch-depth: 2
       - id: detect
-        env:
-          EVENT_NAME: ${{ github.event_name }}
         run: |
-          # Pull Request以外（mainブランチへのpush）では、検査のジョブを実行しない。
-          if [ "$EVENT_NAME" != pull_request ]; then
-            echo "code=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
+          # .github/dependabot.ymlは、zizmorが監査するため、省略してよいファイルに含めない。
           code=$(git diff --name-only HEAD^1 HEAD \
-            | grep -v -E '(\.md$|^\.editorconfig$|^\.markdownlint-cli2\.(yaml|jsonc)$|^\.github/dependabot\.yml$|^LICENSE-)' \
+            | grep -v -E '(\.md$|^\.editorconfig$|^\.markdownlint-cli2\.(yaml|jsonc)$|^LICENSE-)' \
             | head -n 1)
           echo "code=$([ -n "$code" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
 
   # 認証情報は、ドキュメントや設定ファイルにも書かれることがあるため、変更したファイルの判定にかかわらず、すべてのPull Requestで実行する。
   secrets:
     name: Secrets
-    if: github.event_name == 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      # .pre-commit-config.yamlのgitleaksのフックを実行し、フックと同じ版のgitleaksを使う。
+      # .pre-commit-config.yamlのgitleaks-dockerのフックを実行し、フックと同じ版のgitleaksを、Dockerのイメージで使う。
       - uses: j178/prek-action@7b101f8338a08d2bd6fdb3625e4e7692428763a3 # v3.1.1
         with:
           # Dependabotは、Actionsの入力に記述した版を更新しないため、手動で更新する。
-          prek-version: 0.5.11
-          extra-args: gitleaks --all-files
+          prek-version: 0.5.12
+          extra-args: gitleaks-docker --all-files
 
   hooks:
     name: Commit hooks
@@ -82,7 +70,7 @@ jobs:
     env:
       # シークレット検出は、secretsジョブで実行する。
       # cargo denyは、pre-commitフックに加えているが、denyジョブで実行する。
-      SKIP: gitleaks,cargo-deny
+      SKIP: gitleaks-docker,cargo-deny
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -90,13 +78,14 @@ jobs:
       # cargo fmtとcargo metadataのフックが、rust-toolchain.tomlのツールチェーンを使う。
       - run: rustup toolchain install
       # taplo fmtのフック（language: system）が使う。
-      - uses: taiki-e/install-action@fe3acb53a98b62c772db35de75ce0e4595e7ca8c # v2.90.8
+      - uses: taiki-e/install-action@073e1fd0bc889c9aee68dbaaa927cde1b5653a83 # v2.90.11
         with:
           tool: taplo@0.10.0
+      # actionlint-dockerとgitleaks-dockerのフックは、ランナーに導入済みのDockerで実行する。
       - uses: j178/prek-action@7b101f8338a08d2bd6fdb3625e4e7692428763a3 # v3.1.1
         with:
           # Dependabotは、Actionsの入力に記述した版を更新しないため、手動で更新する。
-          prek-version: 0.5.11
+          prek-version: 0.5.12
           # prek-actionは、--show-diff-on-failureを自ら付けるため、重ねて指定しない。
           extra-args: --all-files
 
@@ -114,8 +103,8 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           shared-key: build
-          # mainブランチへのpush（cacheジョブ）でのみ、キャッシュを保存する。
-          save-if: ${{ github.event_name == 'push' }}
+          # mainブランチへのpush（cache.ymlのcacheジョブ）でのみ、キャッシュを保存する。
+          save-if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
       - run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
 
   # ドキュメントの誤り（例: 存在しない項目へのリンク）を検出するため、警告をエラーとしてcargo docを実行する。
@@ -133,7 +122,7 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           shared-key: build
-          save-if: ${{ github.event_name == 'push' }}
+          save-if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
       # RUSTDOCFLAGSは、cargo docのみが使い、他のジョブのビルドのキャッシュに影響しない。
       - run: cargo doc --workspace --no-deps --all-features --locked
         env:
@@ -153,8 +142,8 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           shared-key: build
-          save-if: ${{ github.event_name == 'push' }}
-      - uses: taiki-e/install-action@fe3acb53a98b62c772db35de75ce0e4595e7ca8c # v2.90.8
+          save-if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+      - uses: taiki-e/install-action@073e1fd0bc889c9aee68dbaaa927cde1b5653a83 # v2.90.11
         with:
           tool: cargo-nextest@0.9.152
       - run: cargo nextest run --workspace --all-features --locked
@@ -163,6 +152,27 @@ jobs:
       # serdeのフィーチャーを有効にしない、既定のフィーチャーでも、テストが通ることを確認する。
       - run: cargo nextest run --workspace --locked
       - run: cargo test --workspace --doc --locked
+
+  # 他のジョブは--all-featuresでビルドするため、一部のフィーチャーのみを有効にした場合のビルドの失敗を見逃す。
+  # フィーチャーのすべての組み合わせ（既定のフィーチャーを無効にした場合を含む）で、ライブラリーをビルドできることを確認する。
+  features:
+    name: Features
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: rustup toolchain install
+      # 組み合わせごとにビルドの結果が異なり、cacheジョブで作ったキャッシュを使えず、featuresジョブのためのキャッシュも作られないため、
+      # Swatinem/rust-cacheを使わない。
+      - uses: taiki-e/install-action@073e1fd0bc889c9aee68dbaaa927cde1b5653a83 # v2.90.11
+        with:
+          tool: cargo-hack@0.6.46
+      # --no-dev-depsは、実行中にCargo.tomlを書き換えるため使わない。--libを指定すれば、テストのみで使う依存クレートはビルドされない。
+      - run: cargo hack check --workspace --feature-powerset --lib --locked
 
   msrv:
     name: MSRV
@@ -184,11 +194,8 @@ jobs:
           test -n "${msrv}" && test "${msrv}" != null
           rustup toolchain install "${msrv}" --profile minimal
           echo "MSRV=${msrv}" >> "${GITHUB_ENV}"
-      # 他のジョブと異なるツールチェーンを使うため、キャッシュのキーを分ける。
-      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-        with:
-          shared-key: msrv
-          save-if: ${{ github.event_name == 'push' }}
+      # 他のジョブと異なるツールチェーンを使い、cacheジョブで作ったキャッシュを使えず、msrvジョブのためのキャッシュも作られないため、
+      # Swatinem/rust-cacheを使わない。
       # ライブラリーの利用者は、rust-versionの版でビルドする。テストとサンプルの依存は利用者に影響しないため、ライブラリーのみを検査する。
       - run: cargo "+${MSRV}" check --workspace --lib --all-features --locked
       # serdeのフィーチャーを有効にしない、既定のフィーチャーでも、ビルドできることを確認する。
@@ -206,9 +213,9 @@ jobs:
           persist-credentials: false
       # cargo-denyは、cargo metadataで依存クレートを解決するため、ツールチェーンを使う。
       - run: rustup toolchain install
-      - uses: taiki-e/install-action@fe3acb53a98b62c772db35de75ce0e4595e7ca8c # v2.90.8
+      - uses: taiki-e/install-action@073e1fd0bc889c9aee68dbaaa927cde1b5653a83 # v2.90.11
         with:
-          tool: cargo-deny@0.22.0
+          tool: cargo-deny@0.22.1
       # Dependabotが`Cargo.lock`を更新しない間に公開された勧告も、CIで検出する。
       - run: cargo deny --locked check
 
@@ -223,31 +230,10 @@ jobs:
         with:
           persist-credentials: false
       # cargo-macheteは、ビルドせずにソースコードを検索するため、ツールチェーンとキャッシュを必要としない。
-      - uses: taiki-e/install-action@fe3acb53a98b62c772db35de75ce0e4595e7ca8c # v2.90.8
+      - uses: taiki-e/install-action@073e1fd0bc889c9aee68dbaaa927cde1b5653a83 # v2.90.11
         with:
           tool: cargo-machete@0.10.1
       - run: cargo machete
-
-  # 依存関係を取得してビルドするだけで、Pull Requestの検査のジョブが使うキャッシュを作り直す。検査はしない。
-  cache:
-    name: Cache
-    # mainブランチへのpushでのみ実行する。
-    if: github.event_name == 'push'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - run: rustup toolchain install
-      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-        with:
-          shared-key: build
-          save-if: ${{ github.event_name == 'push' }}
-      # clippyジョブが使う、依存クレートのメタデータを作る。
-      - run: cargo check --workspace --all-targets --all-features --locked
-      # unit-testsジョブが使う、依存クレートのビルドの結果を作る。
-      - run: cargo build --workspace --all-targets --all-features --locked
 
   # すべてのジョブの結果を1つに集約したステータスチェック。
   # 取り消された実行では報告せず、新しい実行の結果を待つ。
@@ -261,10 +247,10 @@ jobs:
       - clippy
       - docs
       - unit-tests
+      - features
       - msrv
       - deny
       - machete
-      - cache
     if: ${{ !cancelled() }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5

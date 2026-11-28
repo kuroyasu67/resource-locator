@@ -1,6 +1,10 @@
 # Configuration file for `cargo-deny`.
 # See https://embarkstudios.github.io/cargo-deny/ for more information.
 
+[graph]
+# 他のジョブと同じく、すべてのフィーチャーで有効になる依存クレートを検査する。
+all-features = true
+
 [advisories]
 version = 2
 yanked  = "deny"
