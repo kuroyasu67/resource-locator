@@ -1,0 +1,46 @@
+# mainブランチで、Pull Requestの検査のジョブが使うビルドのキャッシュを作り直す。検査はしない。
+# 方針は、docs/development-tools.mdの「CI」に記述する。
+# ci.ymlに含めると、mainブランチへのpushでもCI resultが報告され、検査していないマージコミットに成功のCI resultが付くため、分ける。
+name: cache
+
+# Swatinem/rust-cacheのキャッシュのキーに含まれるファイルを変更したPull Requestを、mainブランチにマージしたときのみ実行する。
+on:
+  push:
+    branches: [main]
+    paths:
+      - Cargo.lock
+      - Cargo.toml
+      - "**/Cargo.toml"
+      - rust-toolchain.toml
+      - .cargo/config.toml
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+# ci.ymlと同じ環境変数を指定する。CARGOやRUSTで始まる環境変数も、キャッシュのキーに含まれるためである。
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # 依存関係を取得してビルドするだけで、Pull Requestの検査のジョブが使うキャッシュを作り直す。検査はしない。
+  cache:
+    name: Cache
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: rustup toolchain install
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          shared-key: build
+          save-if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+      # clippyジョブが使う、依存クレートのメタデータを作る。
+      - run: cargo check --workspace --all-targets --all-features --locked
+      # unit-testsジョブが使う、依存クレートのビルドの結果を作る。
+      - run: cargo build --workspace --all-targets --all-features --locked

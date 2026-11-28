@@ -29,15 +29,36 @@ repos:
       - id: trailing-whitespace
       - id: detect-private-key
 
+  # Goを導入せずに済むよう、Dockerのイメージで実行するフックを使う。イメージの版は、revで決まる。
   - repo: https://github.com/gitleaks/gitleaks
     rev: v8.30.1
     hooks:
-      - id: gitleaks
+      - id: gitleaks-docker
 
   - repo: https://github.com/DavidAnson/markdownlint-cli2
     rev: v0.24.2
     hooks:
       - id: markdownlint-cli2
+
+  # GitHub Actionsのワークフローの誤りを検出する。Goを導入せずに済むよう、Dockerのイメージで実行する。
+  - repo: https://github.com/rhysd/actionlint
+    rev: v1.7.12
+    hooks:
+      - id: actionlint-docker
+
+  # GitHub Actionsのワークフローの、安全でない記述を検出する。GitHubのトークンを渡さず、オフラインで実行する。
+  - repo: https://github.com/zizmorcore/zizmor-pre-commit
+    rev: v1.33.1
+    hooks:
+      - id: zizmor
+
+  # コード、コメントおよびドキュメントの英単語の綴りの誤りを検出する。
+  - repo: https://github.com/crate-ci/typos
+    rev: v1.52.2
+    hooks:
+      - id: typos
+        # 誤りを書き換えず、検査のみを行う。
+        args: [--force-exclude]
 
   - repo: local
     hooks:
@@ -46,14 +67,15 @@ repos:
         name: check CI tool versions
         entry: scripts/check-ci-tool-versions.sh
         language: script
-        files: ^(\.github/workflows/ci\.yml|scripts/check-ci-tool-versions\.sh)$
+        files: ^(\.github/workflows/.*\.ya?ml|scripts/check-ci-tool-versions\.sh)$
         pass_filenames: false
 
       - id: cargo-fmt
         name: cargo fmt
         entry: cargo fmt --all -- --check
         language: system
-        types: [rust]
+        # rustfmtの設定のみを変更した場合も、実行する。
+        files: (\.rs|(^|/)\.?rustfmt\.toml)$
         pass_filenames: false
 
       - id: taplo-fmt
@@ -83,7 +105,8 @@ repos:
         name: cargo clippy
         entry: cargo clippy --all-targets --all-features -- -D warnings
         language: system
-        types: [rust]
+        # リンターの設定のみを変更した場合も、実行する。
+        files: (\.rs|(^|/)Cargo\.(toml|lock)|(^|/)\.?clippy\.toml)$
         pass_filenames: false
         stages: [pre-push]
 

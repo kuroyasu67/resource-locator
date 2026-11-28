@@ -1,17 +1,29 @@
 # 開発ツール
 
 本文書は、組織の[ソフトウェア開発標準](https://github.com/dncinc-ict/software-development-standards)に従って、本リポジトリで定める設定を記述する。
-対象は、標準と異なる運用、プロジェクトの種類と版、Rustの版、リンターとフォーマッター、Gitのフック、テスト、CI、依存関係の自動更新およびクレートの版の指定である。
+対象は、標準と異なる運用、ブランチとリリース、プロジェクトの種類と版、Rustの版、リンターとフォーマッター、Gitのフック、テスト、CI、依存関係の自動更新およびクレートの版の指定である。
 Gitのフックの導入は、[Gitのフック](#gitのフック)に記述する。
 
 ## 標準と異なる運用
 
 本リポジトリは、次の点で、標準と異なる運用をする。
 
-- ブランチは、`main`ブランチのみで運用し、標準の[ブランチの運用](https://github.com/dncinc-ict/software-development-standards/blob/main/documents/branching.md)のgit-flow（`develop`ブランチ、`release`ブランチおよび`hotfix`ブランチ）は採用しない。
-  したがって、ルールセットによるブランチとタグの保護、および`vX.Y.Z`のタグは、設定しない。
+- 0.1.0の版には、`v`を付けないタグ（`0.1.0`）を付けていた。
+  利用者が、Gitのリポジトリから取り込むときに、このタグの名前で参照しているおそれがあるため、このタグは削除せずに残す。
+  あわせて、同じコミットに、標準の形式の注釈付きタグ（`v0.1.0`）を付けた。
+  0.2.0以降の版には、標準のとおり、`vX.Y.Z`の注釈付きタグのみを付ける。
 - 本クレートは、crates.ioに公開せず、利用者はGitのリポジトリから取り込む。
   したがって、crates.ioへの公開を前提とする、`include`によるパッケージに含めるファイルの指定、`cargo-semver-checks`による互換性を壊す変更の検出、およびcrates.ioへの公開のワークフローは、適用しない。
+
+## ブランチとリリース
+
+ブランチは、標準の[ブランチの運用](https://github.com/dncinc-ict/software-development-standards/blob/main/documents/branching.md)のとおり、GitHub Flow（`main`ブランチと作業ブランチ）で運用する。
+
+- `main`ブランチは、ルールセット（定義は`.github/rulesets/main.json`）で保護し、変更はすべて、`CI result`の成功を必須とするPull Requestで取り込む。
+  マージの方法は、マージコミットのみとする。
+- リリースは、版の更新のみを含むPull Request（例: `chore/bump-0.2.0`）を`main`ブランチにマージし、そのマージコミットに`vX.Y.Z`の注釈付きタグを付けて行う。
+- 本クレートは、本番環境に配置せず、crates.ioにも公開しないため、タグを検証するワークフロー（CDのワークフロー）はない。
+  したがって、タグを付ける人が、タグが版を上げるPull Requestのマージコミットを指すことと、タグの版が`Cargo.toml`の版と一致することを確認する。
 
 ## プロジェクトの種類と版
 
@@ -81,10 +93,13 @@ Gitのフックは、[`prek`](https://github.com/j178/prek)で管理する。
 | コミット時 | `cargo metadata --locked` | `Cargo.toml`を変更して、`Cargo.lock`を更新し忘れたコミットを防ぐ |
 | コミット時 | `cargo deny --locked check` | 依存クレートを検査する。`Cargo.toml`、`Cargo.lock`または`deny.toml`を変更した場合のみ実行する |
 | コミット時 | `scripts/check-ci-tool-versions.sh` | CIの複数のジョブに記述したツールの版が、揃っていることを確認する |
-| コミット時 | `gitleaks` | 秘密情報のコミットを防ぐ |
+| コミット時 | `gitleaks`（`gitleaks-docker`） | 秘密情報のコミットを防ぐ。Dockerのイメージで実行する |
 | コミット時 | `detect-private-key` | 秘密鍵のコミットを防ぐ |
 | コミット時 | `check-yaml`、`check-json`、`check-toml`、`check-merge-conflict`、`check-case-conflict`、`check-added-large-files`、`fix-byte-order-marker`、`mixed-line-ending`、`end-of-file-fixer`、`trailing-whitespace` | 設定ファイルの構文の誤り、衝突を解消し忘れた印、大きなファイルおよび改行コードの誤りを防ぐ |
 | コミット時 | `markdownlint-cli2` | Markdownのリンク切れや書式の誤りを検出する。設定は`.markdownlint-cli2.jsonc`に記述する |
+| コミット時 | `actionlint`（`actionlint-docker`） | GitHub Actionsのワークフローの誤りを検出する。Dockerのイメージで実行する |
+| コミット時 | `zizmor` | GitHub Actionsのワークフローの、安全でない記述を検出する。GitHubのトークンを渡さず、オフラインで実行する |
+| コミット時 | `typos` | コード、コメントおよびドキュメントの英単語の綴りの誤りを検出する。ファイルを書き換えず、検査のみを行う |
 | プッシュ時 | `cargo clippy --all-targets --all-features -- -D warnings` | 警告をエラーとして扱う |
 | プッシュ時 | `cargo nextest run --all-features` | 単体テストを実行する |
 
@@ -99,23 +114,25 @@ CIで使うツールと同じ版を導入する。
 
 | ツール | 版 | 用途 |
 | --- | --- | --- |
-| [`prek`](https://github.com/j178/prek) | 0.5.11 | Gitのフックの管理 |
+| [`prek`](https://github.com/j178/prek) | 0.5.12 | Gitのフックの管理 |
 | [`taplo`](https://taplo.tamasfe.dev/) | 0.10.0 | TOMLのファイルの書式の検査と整形 |
 | [`cargo-nextest`](https://nexte.st/) | 0.9.152 | 単体テストの実行 |
-| [`cargo-deny`](https://github.com/EmbarkStudios/cargo-deny) | 0.22.0 | 依存クレートの検査 |
+| [`cargo-deny`](https://github.com/EmbarkStudios/cargo-deny) | 0.22.1 | 依存クレートの検査 |
 | [`cargo-machete`](https://github.com/bnjbvr/cargo-machete) | 0.10.1 | 使用されていない依存クレートの検出 |
 
 ```shell
-cargo install prek --locked --version 0.5.11
+cargo install prek --locked --version 0.5.12
 cargo install taplo-cli --locked --version 0.10.0
 cargo install cargo-nextest --locked --version 0.9.152
-cargo install cargo-deny --locked --version 0.22.0
+cargo install cargo-deny --locked --version 0.22.1
 cargo install cargo-machete --locked --version 0.10.1
 prek install
 ```
 
 - Rustのツールチェーンは、`rust-toolchain.toml`の版を、`rustup`が自動で導入する。
-- `gitleaks`と`markdownlint-cli2`は、`prek`が、`.pre-commit-config.yaml`に記述した版を自動で導入する。
+- `gitleaks`、`markdownlint-cli2`、`actionlint`、`zizmor`および`typos`は、`prek`が、`.pre-commit-config.yaml`に記述した版を自動で導入する。
+- `gitleaks`と`actionlint`は、Dockerのイメージで実行するため、開発者はDockerを導入する。
+- フィーチャーの組み合わせの検査（`cargo-hack`）は、CIの`features`ジョブで実行するため、開発者は導入しなくてよい。
 
 ## テスト
 
@@ -145,6 +162,8 @@ cargo test --doc
 ## CI
 
 CIは、GitHub Actionsの`.github/workflows/ci.yml`で実行する。
+`main`ブランチでビルドのキャッシュを作り直す処理は、別のワークフロー（`.github/workflows/cache.yml`）で実行する。
+`ci.yml`に含めると、`main`ブランチへの`push`でも`CI result`が報告され、検査していないマージコミットに、成功の`CI result`が付くためである。
 `main`ブランチへの変更は、Pull Requestを経由するため、CIは`main`ブランチへのPull Requestで実行し、マージした後のブランチでは、同じ検査を繰り返さない。
 同じPull Requestで新しいコミットをプッシュした場合は、古いコミットで実行中のCIを取り消す。
 手動で実行するCIは、Pull Requestの検査と結果が食い違うことがあるため、`workflow_dispatch`では起動しない。
@@ -155,27 +174,30 @@ Gitのフックは、手元で省略できる。
 
 | ジョブ | 内容 |
 | --- | --- |
-| `changes` | Pull Requestで変更したファイルから、検査のジョブを実行するかを判定する。`main`ブランチへの`push`では、検査のジョブを実行しない |
-| `secrets` | `prek run gitleaks --all-files`で、シークレットを検出する。変更したファイルの判定にかかわらず、すべてのPull Requestで実行する |
-| `hooks` | `prek run --all-files`で、コミット時の[Gitのフック](#gitのフック)を実行する。`gitleaks`と`cargo-deny`は、`secrets`ジョブと`deny`ジョブで実行するため、除く（`SKIP`） |
+| `changes` | Pull Requestで変更したファイルから、検査のジョブを実行するかを判定する |
+| `secrets` | `prek run gitleaks-docker --all-files`で、シークレットを検出する。変更したファイルの判定にかかわらず、すべてのPull Requestで実行する |
+| `hooks` | `prek run --all-files`で、コミット時の[Gitのフック](#gitのフック)を実行する。`gitleaks-docker`と`cargo-deny`は、`secrets`ジョブと`deny`ジョブで実行するため、除く（`SKIP`） |
 | `clippy` | `cargo clippy --workspace --all-targets --all-features --locked -- -D warnings`を実行する |
 | `docs` | ドキュメントの誤り（例: 存在しない項目へのリンク）を検出するため、`RUSTDOCFLAGS: -D warnings`で、`cargo doc --workspace --no-deps --all-features --locked`を実行する |
 | `unit-tests` | `cargo nextest run`と`cargo test --doc`で、単体テストとドキュメントテストを、すべてのフィーチャーを有効にした場合と、既定のフィーチャーの場合の両方で実行する |
+| `features` | `cargo hack check --workspace --feature-powerset --lib --locked`で、フィーチャーのすべての組み合わせ（既定のフィーチャーを無効にした場合を含む）で、ライブラリーをビルドできることを確認する |
 | `msrv` | `Cargo.toml`の`rust-version`の版で、`cargo check --lib`を、すべてのフィーチャーを有効にした場合と、既定のフィーチャーの場合の両方で実行する |
 | `deny` | `cargo deny --locked check`で、依存クレートの勧告、ライセンス、使用を禁止するクレートおよび取得元を検査する |
 | `machete` | `cargo machete`で、使用されていない依存クレートを検出する |
-| `cache` | `main`ブランチへの`push`でのみ実行し、`cargo check`と`cargo build`で、検査のジョブが使うビルドのキャッシュを作り直す。検査はしない |
+| `cache`（`cache.yml`） | `main`ブランチへの`push`でのみ実行し、`cargo check`と`cargo build`で、検査のジョブが使うビルドのキャッシュを作り直す。検査はしない |
 | `result` | 他のジョブが、成功したか、変更がないため省略されたことを確認する（`CI result`） |
 
 - ドキュメントなど、次のファイルのみを変更したPull Requestでは、`changes`ジョブが判定し、`secrets`ジョブを除く検査のジョブを省略する。
   ワークフローの`paths`で省略しないのは、ワークフローが起動しないと、`CI result`が報告されないためである。
   省略しないファイルを1つでも含む変更では、すべての検査のジョブを実行する。
   - Markdownのファイル（`**/*.md`）。ドキュメントテストとして取り込むMarkdownのファイルはない
-  - `.editorconfig`、`.markdownlint-cli2.jsonc`（または`.markdownlint-cli2.yaml`）、`.github/dependabot.yml`および`LICENSE-*`
+  - `.editorconfig`、`.markdownlint-cli2.jsonc`（または`.markdownlint-cli2.yaml`）および`LICENSE-*`
+  - `.github/dependabot.yml`は、`zizmor`が監査するため、省略してよいファイルに含めない
 - Rustのビルドのキャッシュは、Pull Requestの間で共有されず、デフォルトブランチ（`main`）のキャッシュのみを共有する。
-  したがって、`Cargo.lock`または`rust-toolchain.toml`を変更したPull Requestを`main`ブランチにマージした場合に限り、`cache`ジョブのみを実行して、キャッシュを作り直す。
+  したがって、キャッシュのキーに含まれるファイル（`Cargo.lock`、`Cargo.toml`、`rust-toolchain.toml`および`.cargo/config.toml`）を変更したPull Requestを`main`ブランチにマージした場合に限り、`cache.yml`の`cache`ジョブを実行して、キャッシュを作り直す。
   検査のジョブは、キャッシュを保存しない（`Swatinem/rust-cache`の`save-if`）。
-  `msrv`ジョブは、他のジョブと異なるツールチェーンを使うため、キャッシュのキーを分ける（`shared-key: msrv`）。
+  `msrv`ジョブは、他のジョブと異なるツールチェーンを使い、`cache`ジョブで作ったキャッシュを使えないため、`Swatinem/rust-cache`を使わない。
+  `features`ジョブは、フィーチャーの組み合わせごとにビルドの結果が異なり、`cache`ジョブで作ったキャッシュを使えないため、`Swatinem/rust-cache`を使わない。
 - 第三者のActionsは、タグを差し替えられても内容が変わらないよう、コミットのハッシュで指定する。
 - ジョブごとに、`timeout-minutes`で実行時間の上限を設ける。
 - `cargo`のコマンドには`--locked`を指定し、`Cargo.lock`と`Cargo.toml`が食い違う場合は失敗させる。
@@ -185,11 +207,12 @@ Gitのフックは、手元で省略できる。
 
   | ツール | 版 | ジョブ |
   | --- | --- | --- |
-  | `prek` | 0.5.11（`j178/prek-action`の`prek-version`） | `secrets`、`hooks` |
+  | `prek` | 0.5.12（`j178/prek-action`の`prek-version`） | `secrets`、`hooks` |
   | `taplo` | 0.10.0 | `hooks` |
   | `cargo-nextest` | 0.9.152 | `unit-tests` |
-  | `cargo-deny` | 0.22.0 | `deny` |
+  | `cargo-deny` | 0.22.1 | `deny` |
   | `cargo-machete` | 0.10.1 | `machete` |
+  | `cargo-hack` | 0.6.46 | `features` |
 
 ## 依存関係の自動更新
 
@@ -207,7 +230,8 @@ Gitのフックは、手元で省略できる。
 その他の方針は、次のとおりである。
 
 - Dependabotは、`Asia/Tokyo`の時刻で毎週月曜日の0時に、更新を作成する。
-- Dependabotは、公開から3日を経過していない版を取り込まない。
+- Dependabotは、公開から7日を経過していない版を取り込まない。
+  `zizmor`は、7日より短い`cooldown`を指摘する。
   公開の直後に取り下げられた版や、乗っ取られて公開された版を、取り込まないためである。
 - セキュリティ更新は、`cargo`と`github-actions`のそれぞれで、1つのPull Requestにまとめる。
 - Dependabotが作成したPull Requestへの対応の手順は、READMEの「依存関係の更新」に記述する。
@@ -221,7 +245,7 @@ Dependabotは、ワークフローの`prek-version`のような、Actionsの入�
 | 版 | 記述する箇所 | 更新の契機と確認 |
 | --- | --- | --- |
 | `prek`の版 | `.github/workflows/ci.yml`の`secrets`ジョブと`hooks`ジョブ | 手元の`prek`を更新したときに、揃えて更新する。`scripts/check-ci-tool-versions.sh`が、2つのジョブで揃っていることを確認する |
-| `taplo`、`cargo-nextest`、`cargo-deny`および`cargo-machete`の版 | `.github/workflows/ci.yml` | 定期的に最新の版を確認して更新する。`taiki-e/install-action`が対応している版から選ぶ。`scripts/check-ci-tool-versions.sh`が、版を指定していることを確認する。更新したときは、[開発者が導入するツール](#開発者が導入するツール)の版も更新する |
+| `taplo`、`cargo-nextest`、`cargo-deny`、`cargo-machete`および`cargo-hack`の版 | `.github/workflows/ci.yml` | 定期的に最新の版を確認して更新する。`taiki-e/install-action`が対応している版から選ぶ。`scripts/check-ci-tool-versions.sh`が、版を指定していることを確認する。更新したときは、[開発者が導入するツール](#開発者が導入するツール)の版も更新する（開発者が導入しない`cargo-hack`を除く） |
 
 ## クレートの版の指定
 
