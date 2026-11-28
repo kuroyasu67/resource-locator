@@ -9,8 +9,9 @@ Gitのフックの導入は、[Gitのフック](#gitのフック)に記述する
 本リポジトリは、次の点で、標準と異なる運用をする。
 
 - 0.1.0の版には、`v`を付けないタグ（`0.1.0`）を付けていた。
-  利用者が、Gitのリポジトリから取り込むときに、このタグの名前で参照しているおそれがあるため、このタグは削除せずに残す。
-  あわせて、同じコミットに、標準の形式の注釈付きタグ（`v0.1.0`）を付けた。
+  利用者は、Gitのリポジトリから本クレートを取り込むときに、`0.1.0`のタグの名前で参照しているおそれがある。
+  したがって、`0.1.0`のタグは、削除せずに残す。
+  あわせて、`v`を付けないタグと同じコミットに、標準の形式に従う注釈付きタグ（`v0.1.0`）を付けた。
   0.2.0以降の版には、標準のとおり、`vX.Y.Z`の注釈付きタグのみを付ける。
 - 本クレートは、crates.ioに公開せず、利用者はGitのリポジトリから取り込む。
   したがって、crates.ioへの公開を前提とする、`include`によるパッケージに含めるファイルの指定、`cargo-semver-checks`による互換性を壊す変更の検出、およびcrates.ioへの公開のワークフローは、適用しない。
@@ -99,7 +100,7 @@ Gitのフックは、[`prek`](https://github.com/j178/prek)で管理する。
 | コミット時 | `markdownlint-cli2` | Markdownのリンク切れや書式の誤りを検出する。設定は`.markdownlint-cli2.jsonc`に記述する |
 | コミット時 | `actionlint`（`actionlint-docker`） | GitHub Actionsのワークフローの誤りを検出する。Dockerのイメージで実行する |
 | コミット時 | `zizmor` | GitHub Actionsのワークフローの、安全でない記述を検出する。GitHubのトークンを渡さず、オフラインで実行する |
-| コミット時 | `typos` | コード、コメントおよびドキュメントの英単語の綴りの誤りを検出する。ファイルを書き換えず、検査のみを行う |
+| コミット時 | `typos` | コード、コメントおよびドキュメントに含まれる英単語の綴り誤りを検出する。ファイルを書き換えず、検査のみを行う |
 | プッシュ時 | `cargo clippy --all-targets --all-features -- -D warnings` | 警告をエラーとして扱う |
 | プッシュ時 | `cargo nextest run --all-features` | 単体テストを実行する |
 
@@ -163,7 +164,7 @@ cargo test --doc
 
 CIは、GitHub Actionsの`.github/workflows/ci.yml`で実行する。
 `main`ブランチでビルドのキャッシュを作り直す処理は、別のワークフロー（`.github/workflows/cache.yml`）で実行する。
-`ci.yml`に含めると、`main`ブランチへの`push`でも`CI result`が報告され、検査していないマージコミットに、成功の`CI result`が付くためである。
+この処理を`ci.yml`に含めると、`main`ブランチへの`push`でも`CI result`が報告され、検査していないマージコミットに、成功の`CI result`が付くためである。
 `main`ブランチへの変更は、Pull Requestを経由するため、CIは`main`ブランチへのPull Requestで実行し、マージした後のブランチでは、同じ検査を繰り返さない。
 同じPull Requestで新しいコミットをプッシュした場合は、古いコミットで実行中のCIを取り消す。
 手動で実行するCIは、Pull Requestの検査と結果が食い違うことがあるため、`workflow_dispatch`では起動しない。
@@ -184,7 +185,7 @@ Gitのフックは、手元で省略できる。
 | `msrv` | `Cargo.toml`の`rust-version`の版で、`cargo check --lib`を、すべてのフィーチャーを有効にした場合と、既定のフィーチャーの場合の両方で実行する |
 | `deny` | `cargo deny --locked check`で、依存クレートの勧告、ライセンス、使用を禁止するクレートおよび取得元を検査する |
 | `machete` | `cargo machete`で、使用されていない依存クレートを検出する |
-| `cache`（`cache.yml`） | `main`ブランチへの`push`でのみ実行し、`cargo check`と`cargo build`で、検査のジョブが使うビルドのキャッシュを作り直す。検査はしない |
+| `cache`（`cache.yml`） | `main`ブランチへの`push`でのみ実行し、`cargo check`と`cargo build`で、検査のジョブが使う、ビルドのキャッシュを作り直す。`cache`ジョブは、検査をしない |
 | `result` | 他のジョブが、成功したか、変更がないため省略されたことを確認する（`CI result`） |
 
 - ドキュメントなど、次のファイルのみを変更したPull Requestでは、`changes`ジョブが判定し、`secrets`ジョブを除く検査のジョブを省略する。
@@ -196,8 +197,10 @@ Gitのフックは、手元で省略できる。
 - Rustのビルドのキャッシュは、Pull Requestの間で共有されず、デフォルトブランチ（`main`）のキャッシュのみを共有する。
   したがって、キャッシュのキーに含まれるファイル（`Cargo.lock`、`Cargo.toml`、`rust-toolchain.toml`および`.cargo/config.toml`）を変更したPull Requestを`main`ブランチにマージした場合に限り、`cache.yml`の`cache`ジョブを実行して、キャッシュを作り直す。
   検査のジョブは、キャッシュを保存しない（`Swatinem/rust-cache`の`save-if`）。
-  `msrv`ジョブは、他のジョブと異なるツールチェーンを使い、`cache`ジョブで作ったキャッシュを使えないため、`Swatinem/rust-cache`を使わない。
-  `features`ジョブは、フィーチャーの組み合わせごとにビルドの結果が異なり、`cache`ジョブで作ったキャッシュを使えないため、`Swatinem/rust-cache`を使わない。
+  `msrv`ジョブは、他のジョブと異なるツールチェーンを使い、`cache`ジョブで作ったキャッシュを使えない。
+  したがって、`msrv`ジョブでは、`Swatinem/rust-cache`を使わない。
+  `features`ジョブは、フィーチャーの組み合わせごとにビルドの結果が異なり、`cache`ジョブで作ったキャッシュを使えない。
+  したがって、`features`ジョブでは、`Swatinem/rust-cache`を使わない。
 - 第三者のActionsは、タグを差し替えられても内容が変わらないよう、コミットのハッシュで指定する。
 - ジョブごとに、`timeout-minutes`で実行時間の上限を設ける。
 - `cargo`のコマンドには`--locked`を指定し、`Cargo.lock`と`Cargo.toml`が食い違う場合は失敗させる。
@@ -230,9 +233,9 @@ Gitのフックは、手元で省略できる。
 その他の方針は、次のとおりである。
 
 - Dependabotは、`Asia/Tokyo`の時刻で毎週月曜日の0時に、更新を作成する。
-- Dependabotは、公開から7日を経過していない版を取り込まない。
-  `zizmor`は、7日より短い`cooldown`を指摘する。
+- Dependabotは、公開から7日を経過した版のみを取り込む。
   公開の直後に取り下げられた版や、乗っ取られて公開された版を、取り込まないためである。
+  `zizmor`は、7日より短い`cooldown`を指摘する。
 - セキュリティ更新は、`cargo`と`github-actions`のそれぞれで、1つのPull Requestにまとめる。
 - Dependabotが作成したPull Requestへの対応の手順は、READMEの「依存関係の更新」に記述する。
 - 新しい安定版のRustで追加されたリンターにより、Clippyの警告が出た場合は、Rustの版を更新するPull Requestで修正する。
